@@ -1,52 +1,73 @@
 # ComfyUI-Seans-OmniTag
 <img width="1319" height="1007" alt="Screenshot 2026-02-12 152534" src="https://github.com/user-attachments/assets/0acb3d61-bb10-4ca0-a32b-d31dd14fdeec" />
 
-# 🛠️ Sean's OmniTag: The Ultimate LTX-2 Dataset Tool
+🛠️ Sean's OmniTag Processor
+The Ultimate All-in-One Captioning & Dataset Pipeline for ComfyUI
+Sean's OmniTag is a powerhouse node designed to eliminate the friction of building high-quality datasets. Whether you are training LTX-Video, Flux, or SDXL, this node automates the most tedious parts of the process: video segmentation, high-fidelity visual captioning, and synchronized audio transcription.
 
-**Sean's OmniTag** is a powerhouse ComfyUI node designed specifically for creators building datasets for **LTX-Video (LTX-2)**, **Flux**, and high-fidelity video LoRAs. It automates the most painful parts of data prep: resampling, resizing, visual captioning, and audio transcription.
+🚀 Key Features
+Omni-Input Support: Drop in a folder of images or a single video file—the node handles both seamlessly.
 
-## 🚀 Why use this?
+Abliterated Intelligence: Powered by the Qwen2.5-VL-7B-Abliterated model, providing unfiltered, clinical, and exhaustive descriptions without AI "safety" refusals.
 
-Stop wasting time building a spiderweb of nodes just to prep a dataset. Sean's OmniTag is a "One-and-Done" solution. Whether you are dropping in a folder of high-res images or a full-length video, this single node handles the extraction, the 24 FPS resampling, the smart-scaling, the visual captioning, and the Whisper transcription in one smooth motion. Best of all? Despite its power, it is highly optimized. Thanks to 4-bit quantization, it cruises along using only ~7GB of VRAM, 
+Smart Segmentation: Automatically carves long videos into perfect training clips with intelligent "Segment Skipping" to maximize visual variety.
 
+Audio-Sync Transcription: Uses OpenAI Whisper to listen to your clips and append spoken dialogue directly to your text captions.
 
-🎥 Video Segmentation (The "Magic" for Video Training)
-target_fps: Sets the frame rate of the exported video clips.
+Anti-Lazy Safety Net: Built-in logic detects if the AI gives a short or "lazy" response and automatically retries with a more aggressive generation pass.
 
-video_segment_seconds: How long each training clip should be (e.g., 5.0 seconds).
+📐 Resolution & Aspect Ratio Logic
+One of the node's strongest assets is its Longest-Edge Scaling system.
 
-segment_skip: This determines how much of the video is skipped between segments. A skip of 10 means the node grabs a 5-second clip, skips ahead 50 Seconds, and grabs another, ensuring your dataset has visual variety.
+Smart Resize: The node identifies the longest side of your media and scales it to your target_resolution (e.g., 768px).
 
-video_max_segments: The total number of clips to extract from a single long video. This prevents one long movie from overwhelming your entire dataset.
+Aspect Ratio Preservation: It never stretches or squashes your content. A 16:9 video stays 16:9, and a 9:16 TikTok stays 9:16.
 
+High-Fidelity Interpolation: Uses Lanczos4 resampling to ensure that fine details—like the texture of a young woman's long wavy hair or the sparkle in striking dark eyes—are preserved for the AI to learn.
 
+Training Ready: Perfectly prepares your data for the "Aspect Ratio Bucketing" used by Flux and LTX-Video.
 
-    📐 Deep Dive: Resolution & Aspect Ratio Logic
-One of the most powerful features of Sean's OmniTag Processor is how it handles varied input sizes. Whether you are throwing 4K vertical TikToks or old 4:3 home movies at it, the node ensures the output is optimized for AI training.
+⚙️ Parameter Guide
+📂 Paths & Instructions
+input_path: Path to your image folder or .mp4/.mkv file.
 
-1. The "Smart Resize" System
-Instead of stretching or squashing your media, the node uses a Longest-Edge Scaling method.
+output_path: Where your pairs of .mp4/.png and .txt files will be saved.
 
-How it works: The node looks at your target_resolution (e.g., 768) and identifies which side of your image/video is the longest.
+trigger_word: Your LoRA's unique identifier (e.g., ohwx).
 
-The Math: It calculates a scaling factor based on that longest side and applies it to the entire frame.
+llm_instruction: Your prompt to the AI. Use {trigger} to automatically insert your trigger word into the description.
 
-Result: If you set the resolution to 768:
+🖼️ Generation Settings
+target_resolution: Max length of the longest side. 768 is recommended for Flux/LTX-V.
 
-A 1920x1080 (Landscape) video becomes 768x432.
+max_tokens: Control description depth (512 to 2048). Use 768+ for detailed video motion descriptions.
 
-A 1080x1920 (Portrait) video becomes 432x768.
+🎥 Video controls
+video_segment_seconds: Duration of each output clip (e.g., 5.0s).
 
-A 1024x1024 (Square) image becomes 768x768.
- 
-    * 
-* **📂 Batch Workflow:** Point it at a folder of images or a single long-form video, and it will churn out paired `.png/.mp4` and `.txt` files ready for training.
+segment_skip: How many segments to skip between grabs. High values ensure a diverse dataset from a single video.
 
----
+video_max_segments: Limits how many clips are pulled from one file to prevent dataset bias.
 
-## 🛠️ Installation
+🎙️ Audio & Speech
+include_audio_in_video: Keeps the original audio track in the exported clips.
 
-### 1. Clone the Repository
+append_speech_to_end: Transcribes dialogue and adds it to the .txt file (e.g., ...a playful smile. Audio: "Hello there!").
+
+💡 Pro-Tips for Creators
+For LTX-Video: Set max_tokens to 1024. This allows the AI enough "breath" to describe complex movements, which is vital for high-quality video LoRAs.
+
+For Character Training: Use the default instruction to focus on physical traits. The Abliterated model excels at describing smooth skin, specific hair waves, and facial expressions without filter interference.
+
+The Fallback: If the AI hits a rare snag, the node is hardcoded to fallback to a high-quality description of a young woman in her mid-20s with fair smooth skin and a playful smile, ensuring your dataset never has an empty file.
+
+📦 Installation
+Place the SeansOmniTag folder into your ComfyUI/custom_nodes/ directory.
+
+The node will automatically attempt to install required dependencies (transformers, whisper, opencv, etc.) on the first launch.
+
+Restart ComfyUI and find the node under Sean's OmniTag 🛠️
+
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/seanhan19911990-source/ComfyUI-Seans-OmniTag.git
