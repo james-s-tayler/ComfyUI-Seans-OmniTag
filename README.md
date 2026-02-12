@@ -12,6 +12,24 @@ Stop wasting time building a spiderweb of nodes just to prep a dataset. Sean's O
 * **💎 True HD Ladder:** Support for resolutions from **256px** all the way to **1920px (1080p)**. It uses smart-aspect scaling to maintain quality without distorting your subjects.
 * **🧠 Multimodal Intelligence:** * **Visuals:** Powered by `Qwen2.5-VL` for hyper-detailed, clinical descriptions.
     * **Audio:** Powered by `OpenAI Whisper` to transcribe dialogue directly into your tags.
+
+    📐 Deep Dive: Resolution & Aspect Ratio Logic
+One of the most powerful features of Sean's OmniTag Processor is how it handles varied input sizes. Whether you are throwing 4K vertical TikToks or old 4:3 home movies at it, the node ensures the output is optimized for AI training.
+
+1. The "Smart Resize" System
+Instead of stretching or squashing your media, the node uses a Longest-Edge Scaling method.
+
+How it works: The node looks at your target_resolution (e.g., 768) and identifies which side of your image/video is the longest.
+
+The Math: It calculates a scaling factor based on that longest side and applies it to the entire frame.
+
+Result: If you set the resolution to 768:
+
+A 1920x1080 (Landscape) video becomes 768x432.
+
+A 1080x1920 (Portrait) video becomes 432x768.
+
+A 1024x1024 (Square) image becomes 768x768.
  
     * 
 * **📂 Batch Workflow:** Point it at a folder of images or a single long-form video, and it will churn out paired `.png/.mp4` and `.txt` files ready for training.
