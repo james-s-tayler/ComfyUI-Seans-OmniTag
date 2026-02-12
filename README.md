@@ -22,4 +22,4 @@
 ### 1. Clone the Repository
 ```bash
 cd ComfyUI/custom_nodes
-git clone [https://github.com/YOUR_USERNAME/ComfyUI-Seans-OmniTag](https://github.com/YOUR_USERNAME/ComfyUI-Seans-OmniTag)
+git clone https://github.com/seanhan19911990-source/ComfyUI-Seans-OmniTag.git
