@@ -1,0 +1,10 @@
+transformers>=4.49.0
+accelerate
+qwen_vl_utils
+huggingface_hub
+torchvision
+opencv-python
+bitsandbytes
+openai-whisper
+pillow
+numpy
