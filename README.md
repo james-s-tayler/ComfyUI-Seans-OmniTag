@@ -8,10 +8,18 @@
 ## 🚀 Why use this?
 
 Stop wasting time building a spiderweb of nodes just to prep a dataset. Sean's OmniTag is a "One-and-Done" solution. Whether you are dropping in a folder of high-res images or a full-length video, this single node handles the extraction, the 24 FPS resampling, the smart-scaling, the visual captioning, and the Whisper transcription in one smooth motion. Best of all? Despite its power, it is highly optimized. Thanks to 4-bit quantization, it cruises along using only ~7GB of VRAM, 
-* **🎬 LTX-2 Standardized:** Automatically resamples video segments to **24 FPS**, ensuring your training data matches the LTX-Video motion model perfectly.
-* **💎 True HD Ladder:** Support for resolutions from **256px** all the way to **1920px (1080p)**. It uses smart-aspect scaling to maintain quality without distorting your subjects.
-* **🧠 Multimodal Intelligence:** * **Visuals:** Powered by `Qwen2.5-VL` for hyper-detailed, clinical descriptions.
-    * **Audio:** Powered by `OpenAI Whisper` to transcribe dialogue directly into your tags.
+
+
+🎥 Video Segmentation (The "Magic" for Video Training)
+target_fps: Sets the frame rate of the exported video clips.
+
+video_segment_seconds: How long each training clip should be (e.g., 5.0 seconds).
+
+segment_skip: This determines how much of the video is skipped between segments. A skip of 10 means the node grabs a 5-second clip, skips ahead 50 Seconds, and grabs another, ensuring your dataset has visual variety.
+
+video_max_segments: The total number of clips to extract from a single long video. This prevents one long movie from overwhelming your entire dataset.
+
+
 
     📐 Deep Dive: Resolution & Aspect Ratio Logic
 One of the most powerful features of Sean's OmniTag Processor is how it handles varied input sizes. Whether you are throwing 4K vertical TikToks or old 4:3 home movies at it, the node ensures the output is optimized for AI training.
