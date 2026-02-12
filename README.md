@@ -6,7 +6,7 @@
 
 ## 🚀 Why use this?
 
-
+Stop wasting time building a spiderweb of nodes just to prep a dataset. Sean's OmniTag is a "One-and-Done" solution. Whether you are dropping in a folder of high-res images or a full-length video, this single node handles the extraction, the 24 FPS resampling, the smart-scaling, the visual captioning, and the Whisper transcription in one smooth motion. Best of all? Despite its power, it is highly optimized. Thanks to 4-bit quantization, it cruises along using only ~7GB of VRAM, 
 * **🎬 LTX-2 Standardized:** Automatically resamples video segments to **24 FPS**, ensuring your training data matches the LTX-Video motion model perfectly.
 * **💎 True HD Ladder:** Support for resolutions from **256px** all the way to **1920px (1080p)**. It uses smart-aspect scaling to maintain quality without distorting your subjects.
 * **🧠 Multimodal Intelligence:** * **Visuals:** Powered by `Qwen2.5-VL` for hyper-detailed, clinical descriptions.
