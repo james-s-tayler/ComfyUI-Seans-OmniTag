@@ -1,5 +1,6 @@
 # ComfyUI-Seans-OmniTag
-<img width="1319" height="1007" alt="Screenshot 2026-02-12 152534" src="https://github.com/user-attachments/assets/0acb3d61-bb10-4ca0-a32b-d31dd14fdeec" />
+<img width="467" height="417" alt="image" src="https://github.com/user-attachments/assets/8f043f41-2def-42ac-b4ec-6116e217de41" />
+
 
 🛠️ Sean's OmniTag Processor
 The Ultimate All-in-One Captioning & Dataset Pipeline for ComfyUI
