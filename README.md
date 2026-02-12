@@ -59,7 +59,7 @@ For LTX-Video: Set max_tokens to 1024. This allows the AI enough "breath" to des
 
 For Character Training: Use the default instruction to focus on physical traits. The Abliterated model excels at describing smooth skin, specific hair waves, and facial expressions without filter interference.
 
-The Fallback: If the AI hits a rare snag, the node is hardcoded to fallback to a high-quality description of a young woman in her mid-20s with fair smooth skin and a playful smile, ensuring your dataset never has an empty file.
+The Fallback: If the AI hits a rare snag, the node is hardcoded to fallback to a high-quality description.
 
 📦 Installation
 Place the SeansOmniTag folder into your ComfyUI/custom_nodes/ directory.
