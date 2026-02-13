@@ -11,7 +11,16 @@ from PIL import Image
 import nodes
 import comfy.model_management 
 
-# --- AUTO-INSTALLER ---
+# --- AUTO-INSTALLER & FFmpeg VALIDATION ---
+def check_ffmpeg():
+    """Verify if FFmpeg is installed and accessible in the system PATH."""
+    try:
+        # We use a simple version check to see if the command exists
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
 def install_dependencies():
     current_python = sys.executable
     try:
@@ -83,7 +92,6 @@ class SeansOmniTagProcessor:
         inputs = self.processor(text=[text_in], images=img_in, padding=True, return_tensors="pt").to(device)
 
         with torch.no_grad():
-            # Pass 1: Sampling with User-defined Token Limit
             gen_ids = self.model.generate(
                 **inputs, 
                 max_new_tokens=token_limit, 
@@ -99,7 +107,6 @@ class SeansOmniTagProcessor:
         if not caption or caption.lower() == trigger.lower() or len(caption) < 20:
             print(f"⚠️ Lazy caption detected. Retrying for {trigger}...")
             with torch.no_grad():
-                # Retry with Greedy Search (ignores sampling randomness)
                 gen_ids = self.model.generate(
                     **inputs, 
                     max_new_tokens=max(512, token_limit // 2), 
@@ -108,13 +115,17 @@ class SeansOmniTagProcessor:
                 )
             caption = self.processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
 
-        # Final Emergency Fallback
+        # Final Emergency Fallback (Young woman mid-20s, dark wavy hair, playful smile)
         if not caption or caption.lower() == trigger.lower():
             caption = f"{trigger}, a cinematic scene featuring a young woman in her mid-20s with long dark wavy hair, fair smooth skin, striking dark eyes, and a playful smile."
         
         return caption
 
     def process_all(self, **kwargs):
+        # --- PRE-FLIGHT CHECK: FFmpeg ---
+        if not check_ffmpeg():
+            return ("❌ ERROR: FFmpeg not found! Please install FFmpeg and add it to your system PATH to enable video/audio features.",)
+
         # Path Sanitization
         input_path = kwargs.get("input_path").strip().replace('"', '').replace("'", "").replace("\\", "/")
         output_path = kwargs.get("output_path").strip().replace('"', '').replace("'", "").replace("\\", "/")
@@ -178,6 +189,8 @@ class SeansOmniTagProcessor:
                 file_base = f"{orig_name}_seg_{s:04d}"
                 temp_wav = os.path.join(output_path, "temp.wav")
                 st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
+                
+                # Audio Extraction via FFmpeg
                 subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
 
                 mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
