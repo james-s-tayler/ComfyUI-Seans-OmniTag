@@ -2,7 +2,7 @@
 <img width="467" height="417" alt="image" src="https://github.com/user-attachments/assets/8f043f41-2def-42ac-b4ec-6116e217de41" />
 
 
-
+POINT TO A MP4 FILE FOR SPLITTING MP4'S  ><><>< POINT TO A IMAGE FOLDER TO DO IMAGES.
 📦 Installation & Requirements
 1. Install Custom Node
 Clone this repo into your ComfyUI/custom_nodes/ folder:
