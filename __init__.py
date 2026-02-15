@@ -227,10 +227,15 @@ class SeansOmniTagProcessor:
             elif device == "cuda":
                 model_kwargs.update({"device_map": {"": 0}})
             elif kwargs.get("enable_cpu_offload"):
+                requested_gpu_limit = int(kwargs.get("gpu_memory_limit_gb"))
+                total_gpu_gb = int(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3))
+                safe_gpu_limit = max(2, min(requested_gpu_limit, max(2, total_gpu_gb - 1)))
+                if safe_gpu_limit < requested_gpu_limit:
+                    print(f"⚠️ Reducing gpu_memory_limit_gb from {requested_gpu_limit}GiB to {safe_gpu_limit}GiB to match detected VRAM.")
                 model_kwargs.update({
                     "device_map": "auto",
                     "max_memory": {
-                        "cuda:0": f"{int(kwargs.get('gpu_memory_limit_gb'))}GiB",
+                        "cuda:0": f"{safe_gpu_limit}GiB",
                         "cpu": f"{int(kwargs.get('cpu_memory_limit_gb'))}GiB"
                     },
                 })
