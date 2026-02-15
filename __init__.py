@@ -195,6 +195,12 @@ class SeansOmniTagProcessor:
         device = "cuda" if selected_device == "auto" and torch.cuda.is_available() else ("cpu" if selected_device == "auto" else selected_device)
 
         if self.model is None:
+            if device == "cuda":
+                if hasattr(comfy.model_management, "unload_all_models"):
+                    comfy.model_management.unload_all_models()
+                if hasattr(comfy.model_management, "soft_empty_cache"):
+                    comfy.model_management.soft_empty_cache()
+                torch.cuda.empty_cache()
             q_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
             model_kwargs = {
                 "quantization_config": q_config,
@@ -206,7 +212,8 @@ class SeansOmniTagProcessor:
                     model_kwargs.update({"device_map": {"": 0}})
                 else:
                     total_gpu_gb = int(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3))
-                    safe_gpu_limit = max(2, total_gpu_gb - 1)
+                    free_gpu_gb = int(torch.cuda.mem_get_info(0)[0] / (1024 ** 3))
+                    safe_gpu_limit = max(2, min(total_gpu_gb - 2, free_gpu_gb - 2))
                     model_kwargs.update({
                         "device_map": "auto",
                         "max_memory": {
@@ -214,7 +221,7 @@ class SeansOmniTagProcessor:
                             "cpu": "48GiB"
                         },
                     })
-                    print(f"ℹ️ Auto device mode: using GPU+CPU offload with {safe_gpu_limit}GiB GPU budget.")
+                    print(f"ℹ️ Auto device mode: using GPU+CPU offload with {safe_gpu_limit}GiB GPU budget (free={free_gpu_gb}GiB, total={total_gpu_gb}GiB).")
             else:
                 model_kwargs.update({"device_map": "cpu"})
 
