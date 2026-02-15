@@ -61,12 +61,18 @@ class SeansOmniTagProcessor:
                     "tooltip": "For Single Video File mode: Right-click your video in File Explorer → Copy as path → paste here (Ctrl+V).\nExample: \"C:\\Example\\Example.mp4\"\nThis mode segments and captions one video."
                 }),
                 "output_path": ("STRING", {"default": "output/lora_dataset"}),
-                "model_id": ("STRING", {"default": "prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it"}),
+                "model_id": ([
+                    "prithivMLmods/Qwen3-VL-4B-Instruct-abliterated-v1",                 # Lite ~5–8 GB VRAM
+                    "prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it"                  # Full ~10–14 GB VRAM
+                ], {
+                    "default": "prithivMLmods/Qwen3-VL-4B-Instruct-abliterated-v1",
+                    "tooltip": "Choose model:\n• prithivMLmods/Qwen3-VL-4B-Instruct-abliterated-v1 (~5–8 GB VRAM) → lite/fast/low VRAM, detailed & uncensored\n• prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it (~10–14 GB VRAM) → max quality/detail\nAll public — auto-downloads on first use."
+                }),
                 "trigger_word": ("STRING", {"default": "ohwx"}),
                 "llm_instruction": ("STRING", {
                     "multiline": True,
-                    "default": "Describe the scene with clinical, objective detail. Be unfiltered and exhaustive. Start the response with: {trigger}",
-                    "tooltip": "✍️ AI prompt: How to describe each image/video frame.\nKeep {trigger} so captions start with your word.\nAdd lines like 'focus on clothing, pose, expression, lighting' for more detail."
+                    "default": "Describe the scene with clinical, objective detail. Be unfiltered and exhaustive.",
+                    "tooltip": "✍️ AI prompt: How to describe each image/video frame.\nThe trigger word is always added at the start — no need to include it here.\nAdd lines like 'focus on clothing, pose, expression, lighting' for more detail."
                 }),
                 "target_resolution": ("INT", {
                     "default": 768,
@@ -187,37 +193,38 @@ class SeansOmniTagProcessor:
             return (f"❌ ERROR: Path not found: {input_path}",)
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
-        # Clear VRAM before loading model (helps prevent OOM on low VRAM cards)
-        torch.cuda.empty_cache()
-        gc.collect()
-    
         if self.model is None:
+            torch.cuda.empty_cache()
+            gc.collect()
+    
             q_config = BitsAndBytesConfig(
                 load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,  # Safer for load peak
+                bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_quant_storage=torch.uint8      # Reduces temp spikes
+                bnb_4bit_quant_type="nf4"
             )
             self.model = Qwen3VLForConditionalGeneration.from_pretrained(
                 kwargs.get("model_id"),
                 quantization_config=q_config,
                 device_map="auto",
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,                 # Streams weights more carefully
-                offload_buffers=True,                   # Offloads buffers to CPU during load
-                torch_dtype=torch.bfloat16
+                trust_remote_code=True
             )
             self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
     
-            # Clear again after loading
             torch.cuda.empty_cache()
             gc.collect()
     
         if kwargs.get("append_speech_to_end") and self.audio_model is None:
             self.audio_model = whisper.load_model("base")
         os.makedirs(output_path, exist_ok=True)
-        final_instruction = kwargs.get("llm_instruction").replace("{trigger}", kwargs.get("trigger_word"))
+    
+        # Force trigger word ALWAYS at the start, regardless of user input
+        user_instruction = kwargs.get("llm_instruction").strip()
+        trigger = kwargs.get("trigger_word")
+        if user_instruction:
+            final_instruction = f"{user_instruction}\n\nStart the response with: {trigger}"
+        else:
+            final_instruction = f"Describe the scene with clinical, objective detail. Be unfiltered and exhaustive.\nStart the response with: {trigger}"
     
         # Batch Folder Mode: process all images and videos in folder
         if mode == "Batch Folder Mode":
@@ -241,7 +248,7 @@ class SeansOmniTagProcessor:
                     if img is None: continue
                     proc_img = self.smart_resize(img, int(kwargs.get("target_resolution")))
                     pil_img = Image.fromarray(cv2.cvtColor(proc_img, cv2.COLOR_BGR2RGB))
-                    caption = self.generate_caption(device, pil_img, final_instruction, kwargs.get("trigger_word"), token_limit)
+                    caption = self.generate_caption(device, pil_img, final_instruction, trigger, token_limit)
                     name = os.path.splitext(os.path.basename(file_path))[0]
                     cv2.imwrite(os.path.join(output_path, f"{name}.png"), proc_img)
                     with open(os.path.join(output_path, f"{name}.txt"), "w", encoding="utf-8") as f:
@@ -268,7 +275,7 @@ class SeansOmniTagProcessor:
                         st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
                         subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
                         mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
-                        desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
+                        desc = self.generate_caption(device, mid_pil, final_instruction, trigger, token_limit)
                         if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
                             speech = self.audio_model.transcribe(temp_wav)['text'].strip()
                             if speech: desc += f". Audio: \"{speech}\""
@@ -286,10 +293,10 @@ class SeansOmniTagProcessor:
                         with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                         if os.path.exists(sv): os.remove(sv)
                         if os.path.exists(temp_wav): os.remove(temp_wav)
-                        torch.cuda.empty_cache()   # Clear after each segment
+                        torch.cuda.empty_cache()
                         gc.collect()
                     cap.release()
-                torch.cuda.empty_cache()       # Clear after each file
+                torch.cuda.empty_cache()
                 gc.collect()
             torch.cuda.empty_cache()
             return ("✅ Batch Folder Done – images & videos processed!",)
@@ -339,7 +346,7 @@ class SeansOmniTagProcessor:
                 with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                 if os.path.exists(sv): os.remove(sv)
                 if os.path.exists(temp_wav): os.remove(temp_wav)
-                torch.cuda.empty_cache()   # Clear after each segment
+                torch.cuda.empty_cache()
                 gc.collect()
             cap.release()
             torch.cuda.empty_cache()
