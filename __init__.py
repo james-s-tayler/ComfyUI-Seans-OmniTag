@@ -613,6 +613,7 @@ class SeansOmniTagProcessorGGUF:
             ]
 
             # Generate caption
+            # Note: llama-cpp-python uses 'repeat_penalty' instead of 'repetition_penalty'
             result = self.llm.create_chat_completion(
                 messages=messages,
                 max_tokens=token_limit,
@@ -740,7 +741,9 @@ class SeansOmniTagProcessorGGUF:
                         file_base = f"{orig_name}_seg_{s:04d}"
                         temp_wav = os.path.join(output_path, "temp.wav")
                         st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
-                        subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
+                        result = subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"⚠️ FFmpeg audio extraction failed: {result.stderr}")
                         mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
                         desc = self.generate_caption(mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                         if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
@@ -796,7 +799,9 @@ class SeansOmniTagProcessorGGUF:
                 temp_wav = os.path.join(output_path, "temp.wav")
                 st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
            
-                subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
+                result = subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True, text=True)
+                if result.returncode != 0:
+                    print(f"⚠️ FFmpeg audio extraction failed: {result.stderr}")
                 mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
                 desc = self.generate_caption(mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                 if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
