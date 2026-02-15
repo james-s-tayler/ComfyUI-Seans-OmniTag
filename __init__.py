@@ -1,11 +1,14 @@
 import os
 import sys
 import subprocess
+import io
+import base64
 import torch
 import gc
 import cv2
 import numpy as np
 from PIL import Image
+from urllib.parse import urlparse
 # --- COMFYUI CORE INTERRUPTS ---
 import nodes
 import comfy.model_management
@@ -21,7 +24,21 @@ def check_ffmpeg():
 def install_dependencies():
     current_python = sys.executable
     try:
-        subprocess.check_call([current_python, "-m", "pip", "install", "transformers>=4.57.0", "accelerate", "qwen_vl_utils", "huggingface_hub", "torchvision", "opencv-python", "bitsandbytes", "openai-whisper"])
+        subprocess.check_call([
+            current_python,
+            "-m",
+            "pip",
+            "install",
+            "transformers>=4.57.0",
+            "accelerate",
+            "qwen_vl_utils",
+            "huggingface_hub",
+            "torchvision",
+            "opencv-python",
+            "bitsandbytes",
+            "openai-whisper",
+            "llama-cpp-python",
+        ])
         return True
     except:
         return False
@@ -29,11 +46,15 @@ def install_dependencies():
 try:
     from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
     from qwen_vl_utils import process_vision_info
+    from huggingface_hub import hf_hub_download
+    from llama_cpp import Llama
     import whisper
 except ImportError:
     install_dependencies()
     from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
     from qwen_vl_utils import process_vision_info
+    from huggingface_hub import hf_hub_download
+    from llama_cpp import Llama
     import whisper
 
 class SeansOmniTagProcessor:
@@ -43,6 +64,7 @@ class SeansOmniTagProcessor:
     def __init__(self):
         self.model, self.processor = None, None
         self.audio_model = None
+        self.backend = None
 
     @classmethod
     def INPUT_TYPES(s):
@@ -61,7 +83,8 @@ class SeansOmniTagProcessor:
                     "tooltip": "For Single Video File mode: Right-click your video in File Explorer → Copy as path → paste here (Ctrl+V).\nExample: \"C:\\Example\\Example.mp4\"\nThis mode segments and captions one video."
                 }),
                 "output_path": ("STRING", {"default": "output/lora_dataset"}),
-                "model_id": ("STRING", {"default": "prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it"}),
+                "model_id": ("STRING", {"default": "prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it-GGUF"}),
+                "gguf_filename": ("STRING", {"default": "Qwen3-VL-8B-Abliterated-Caption-it.Q8_0.gguf"}),
                 "trigger_word": ("STRING", {"default": "ohwx"}),
                 "llm_instruction": ("STRING", {
                     "multiline": True,
@@ -135,7 +158,75 @@ class SeansOmniTagProcessor:
         new_w, new_h = int(w * scale), int(h * scale)
         return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
+    def _parse_hf_url(self, model_id, gguf_filename):
+        if not model_id.startswith("http"):
+            return model_id, gguf_filename
+
+        parsed = urlparse(model_id)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 2:
+            repo_id = f"{parts[0]}/{parts[1]}"
+            if "blob" in parts and len(parts) > parts.index("blob") + 2:
+                gguf_filename = parts[-1]
+            return repo_id, gguf_filename
+        return model_id, gguf_filename
+
+    def _encode_pil_to_data_url(self, pil_img):
+        png_bytes = io.BytesIO()
+        pil_img.save(png_bytes, format="PNG")
+        encoded = base64.b64encode(png_bytes.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{encoded}"
+
+    def _load_model(self, model_id, gguf_filename):
+        parsed_model_id, parsed_gguf_filename = self._parse_hf_url(model_id, gguf_filename)
+
+        if parsed_model_id.endswith(".gguf"):
+            self.backend = "gguf"
+            self.model = Llama(model_path=parsed_model_id, n_ctx=4096, n_gpu_layers=-1, verbose=False)
+            return
+
+        if parsed_gguf_filename.lower().endswith(".gguf"):
+            self.backend = "gguf"
+            model_path = hf_hub_download(repo_id=parsed_model_id, filename=parsed_gguf_filename)
+            self.model = Llama(model_path=model_path, n_ctx=4096, n_gpu_layers=-1, verbose=False)
+            return
+
+        self.backend = "transformers"
+        q_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_quant_storage=torch.uint8
+        )
+        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+            parsed_model_id,
+            quantization_config=q_config,
+            device_map="auto",
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            offload_buffers=True,
+            torch_dtype=torch.bfloat16
+        )
+        self.processor = AutoProcessor.from_pretrained(parsed_model_id, trust_remote_code=True)
+
     def generate_caption(self, device, pil_img, instruction, trigger, token_limit):
+        if self.backend == "gguf":
+            response = self.model.create_chat_completion(
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": instruction},
+                        {"type": "image_url", "image_url": {"url": self._encode_pil_to_data_url(pil_img)}}
+                    ]
+                }],
+                max_tokens=token_limit,
+                temperature=0.7,
+                top_p=0.9,
+            )
+            caption = response["choices"][0]["message"]["content"].strip()
+            return caption if caption else trigger
+
         messages = [{"role": "user", "content": [{"type": "image", "image": pil_img}, {"type": "text", "text": instruction}]}]
         text_in = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         img_in, _ = process_vision_info(messages)
@@ -192,23 +283,7 @@ class SeansOmniTagProcessor:
         gc.collect()
     
         if self.model is None:
-            q_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,  # Safer for load peak
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_quant_storage=torch.uint8      # Reduces temp spikes
-            )
-            self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-                kwargs.get("model_id"),
-                quantization_config=q_config,
-                device_map="auto",
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,                 # Streams weights more carefully
-                offload_buffers=True,                   # Offloads buffers to CPU during load
-                torch_dtype=torch.bfloat16
-            )
-            self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
+            self._load_model(kwargs.get("model_id"), kwargs.get("gguf_filename"))
     
             # Clear again after loading
             torch.cuda.empty_cache()

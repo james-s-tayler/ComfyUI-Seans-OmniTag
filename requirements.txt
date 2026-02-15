@@ -8,3 +8,4 @@ bitsandbytes
 openai-whisper
 pillow
 numpy
+llama-cpp-python

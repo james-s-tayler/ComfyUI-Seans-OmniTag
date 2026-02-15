@@ -53,6 +53,6 @@ Perfect for building high-quality LoRA datasets, especially when you want **raw,
 
 
 
-Works with 4-bit quantized Qwen3-VL-8B (≈10–14 GB VRAM)  
-First run downloads model automatically (~16 GB)
+Now defaults to loading the GGUF build (`Qwen3-VL-8B-Abliterated-Caption-it.Q8_0.gguf`) from `prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it-GGUF`.  
+You can still switch `model_id` to a Transformers repo if needed.
 
