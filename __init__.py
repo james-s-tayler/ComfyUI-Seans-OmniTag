@@ -163,7 +163,7 @@ class SeansOmniTagProcessor:
             caption = self.processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
     
         if not caption or caption.lower() == trigger.lower():
-            caption = f"{trigger}, a cinematic scene featuring a young woman in her mid-20s with long dark wavy hair, fair smooth skin, striking dark eyes, and a playful smile."
+            caption = f"{trigger}, scene description unavailable"
     
         return caption
 
@@ -266,7 +266,9 @@ class SeansOmniTagProcessor:
                         file_base = f"{orig_name}_seg_{s:04d}"
                         temp_wav = os.path.join(output_path, "temp.wav")
                         st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
-                        subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
+                        result = subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"⚠️ FFmpeg audio extraction failed: {result.stderr}")
                         mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
                         desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                         if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
@@ -282,7 +284,9 @@ class SeansOmniTagProcessor:
                         if kwargs.get("include_audio_in_video") and os.path.exists(temp_wav):
                             ffmpeg_cmd += ['-i', temp_wav, '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac']
                         ffmpeg_cmd += ['-filter:v', f'fps=fps={kwargs.get("target_fps")}', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', fv]
-                        subprocess.run(ffmpeg_cmd, capture_output=True)
+                        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"⚠️ FFmpeg video encoding failed: {result.stderr}")
                         with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                         if os.path.exists(sv): os.remove(sv)
                         if os.path.exists(temp_wav): os.remove(temp_wav)
@@ -297,7 +301,9 @@ class SeansOmniTagProcessor:
         # Single Video File Mode
         else:
             cap = cv2.VideoCapture(input_path)
-            if not cap.isOpened(): return (f"❌ ERROR: Cannot open video: {input_path}",)
+            if not cap.isOpened():
+                cap.release()
+                return (f"❌ ERROR: Cannot open video: {input_path}",)
        
             fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
             orig_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -318,7 +324,9 @@ class SeansOmniTagProcessor:
                 temp_wav = os.path.join(output_path, "temp.wav")
                 st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
            
-                subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
+                result = subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True, text=True)
+                if result.returncode != 0:
+                    print(f"⚠️ FFmpeg audio extraction failed: {result.stderr}")
                 mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
                 desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                 if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
@@ -334,7 +342,9 @@ class SeansOmniTagProcessor:
                 if kwargs.get("include_audio_in_video") and os.path.exists(temp_wav):
                     ffmpeg_cmd += ['-i', temp_wav, '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac']
                 ffmpeg_cmd += ['-filter:v', f'fps=fps={kwargs.get("target_fps")}', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', fv]
-                subprocess.run(ffmpeg_cmd, capture_output=True)
+                result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    print(f"⚠️ FFmpeg video encoding failed: {result.stderr}")
             
                 with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                 if os.path.exists(sv): os.remove(sv)
@@ -489,14 +499,8 @@ class SeansOmniTagProcessorGGUF:
         try:
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Qwen3VLChatHandler
-        except ImportError:
-            try:
-                # Try installing llama-cpp-python
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "llama-cpp-python"])
-                from llama_cpp import Llama
-                from llama_cpp.llama_chat_format import Qwen3VLChatHandler
-            except Exception as e:
-                return f"❌ ERROR: Failed to import llama-cpp-python. Install with: pip install llama-cpp-python\nError: {e}"
+        except ImportError as e:
+            return f"❌ ERROR: llama-cpp-python not installed. Install it with: pip install llama-cpp-python\nError: {e}"
 
         # Determine model and mmproj paths
         final_model_path = model_path.strip() if model_path.strip() else None
@@ -634,7 +638,7 @@ class SeansOmniTagProcessorGGUF:
 
             # Final fallback
             if not caption or caption.lower() == trigger.lower():
-                caption = f"{trigger}, a cinematic scene featuring a young woman in her mid-20s with long dark wavy hair, fair smooth skin, striking dark eyes, and a playful smile."
+                caption = f"{trigger}, scene description unavailable"
 
             return caption
 
@@ -752,7 +756,9 @@ class SeansOmniTagProcessorGGUF:
                         if kwargs.get("include_audio_in_video") and os.path.exists(temp_wav):
                             ffmpeg_cmd += ['-i', temp_wav, '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac']
                         ffmpeg_cmd += ['-filter:v', f'fps=fps={kwargs.get("target_fps")}', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', fv]
-                        subprocess.run(ffmpeg_cmd, capture_output=True)
+                        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"⚠️ FFmpeg video encoding failed: {result.stderr}")
                         with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                         if os.path.exists(sv): os.remove(sv)
                         if os.path.exists(temp_wav): os.remove(temp_wav)
@@ -767,7 +773,9 @@ class SeansOmniTagProcessorGGUF:
         # Single Video File Mode
         else:
             cap = cv2.VideoCapture(input_path)
-            if not cap.isOpened(): return (f"❌ ERROR: Cannot open video: {input_path}",)
+            if not cap.isOpened():
+                cap.release()
+                return (f"❌ ERROR: Cannot open video: {input_path}",)
        
             fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
             orig_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -804,7 +812,9 @@ class SeansOmniTagProcessorGGUF:
                 if kwargs.get("include_audio_in_video") and os.path.exists(temp_wav):
                     ffmpeg_cmd += ['-i', temp_wav, '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac']
                 ffmpeg_cmd += ['-filter:v', f'fps=fps={kwargs.get("target_fps")}', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', fv]
-                subprocess.run(ffmpeg_cmd, capture_output=True)
+                result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    print(f"⚠️ FFmpeg video encoding failed: {result.stderr}")
             
                 with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                 if os.path.exists(sv): os.remove(sv)
