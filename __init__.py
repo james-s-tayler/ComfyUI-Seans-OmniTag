@@ -187,15 +187,32 @@ class SeansOmniTagProcessor:
             return (f"❌ ERROR: Path not found: {input_path}",)
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
+        # Clear VRAM before loading model (helps prevent OOM on low VRAM cards)
+        torch.cuda.empty_cache()
+        gc.collect()
+    
         if self.model is None:
-            q_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
+            q_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,  # Safer for load peak
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_quant_storage=torch.uint8      # Reduces temp spikes
+            )
             self.model = Qwen3VLForConditionalGeneration.from_pretrained(
                 kwargs.get("model_id"),
                 quantization_config=q_config,
                 device_map="auto",
-                trust_remote_code=True
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,                 # Streams weights more carefully
+                offload_buffers=True,                   # Offloads buffers to CPU during load
+                torch_dtype=torch.bfloat16
             )
             self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
+    
+            # Clear again after loading
+            torch.cuda.empty_cache()
+            gc.collect()
     
         if kwargs.get("append_speech_to_end") and self.audio_model is None:
             self.audio_model = whisper.load_model("base")
@@ -269,8 +286,11 @@ class SeansOmniTagProcessor:
                         with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                         if os.path.exists(sv): os.remove(sv)
                         if os.path.exists(temp_wav): os.remove(temp_wav)
-                        torch.cuda.empty_cache()
+                        torch.cuda.empty_cache()   # Clear after each segment
+                        gc.collect()
                     cap.release()
+                torch.cuda.empty_cache()       # Clear after each file
+                gc.collect()
             torch.cuda.empty_cache()
             return ("✅ Batch Folder Done – images & videos processed!",)
     
@@ -278,11 +298,11 @@ class SeansOmniTagProcessor:
         else:
             cap = cv2.VideoCapture(input_path)
             if not cap.isOpened(): return (f"❌ ERROR: Cannot open video: {input_path}",)
-        
+       
             fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
             orig_name = os.path.splitext(os.path.basename(input_path))[0]
             frames_per_seg = int(fps * kwargs.get("video_segment_seconds"))
-        
+       
             for s in range(kwargs.get("video_max_segments")):
                 if self.check_interrupt(): cap.release(); return (f"❌ STOPPED AT SEG {s}",)
                 cap.set(cv2.CAP_PROP_POS_FRAMES, s * frames_per_seg * kwargs.get("segment_skip"))
@@ -291,13 +311,13 @@ class SeansOmniTagProcessor:
                     ret, frame = cap.read()
                     if not ret: break
                     seg_frames.append(self.smart_resize(frame, int(kwargs.get("target_resolution"))))
-            
+           
                 if not seg_frames: break
-            
+           
                 file_base = f"{orig_name}_seg_{s:04d}"
                 temp_wav = os.path.join(output_path, "temp.wav")
                 st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
-            
+           
                 subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
                 mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
                 desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
@@ -319,8 +339,11 @@ class SeansOmniTagProcessor:
                 with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                 if os.path.exists(sv): os.remove(sv)
                 if os.path.exists(temp_wav): os.remove(temp_wav)
-                torch.cuda.empty_cache()
+                torch.cuda.empty_cache()   # Clear after each segment
+                gc.collect()
             cap.release()
+            torch.cuda.empty_cache()
+            gc.collect()
             return ("✅ Video Processing Done",)
 
 NODE_CLASS_MAPPINGS = {"SeansOmniTagProcessor": SeansOmniTagProcessor}
