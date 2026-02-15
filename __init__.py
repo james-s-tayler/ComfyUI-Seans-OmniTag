@@ -628,6 +628,7 @@ class SeansOmniTagProcessorGGUF:
             # Fallback if caption is lazy
             if not caption or caption.lower() == trigger.lower() or len(caption) < 20:
                 print(f"⚠️ Lazy caption detected. Retrying for {trigger}...")
+                # Using repeat_penalty (llama-cpp-python parameter name)
                 result = self.llm.create_chat_completion(
                     messages=messages,
                     max_tokens=max(512, token_limit // 2),
