@@ -500,7 +500,7 @@ class SeansOmniTagProcessorGGUF:
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Qwen3VLChatHandler
         except ImportError as e:
-            return f"❌ ERROR: llama-cpp-python not installed. Install it with: pip install llama-cpp-python\nError: {e}"
+            return f"❌ ERROR: llama-cpp-python not installed. Install dependencies from requirements.txt: pip install -r requirements.txt\nError: {e}"
 
         # Determine model and mmproj paths
         final_model_path = model_path.strip() if model_path.strip() else None
@@ -601,7 +601,7 @@ class SeansOmniTagProcessorGGUF:
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a helpful vision-language assistant. Answer directly with the final answer only."
+                    "content": "You are a helpful vision-language assistant that provides detailed, accurate image descriptions."
                 },
                 {
                     "role": "user",
@@ -619,7 +619,7 @@ class SeansOmniTagProcessorGGUF:
                 max_tokens=token_limit,
                 temperature=0.7,
                 top_p=0.9,
-                repeat_penalty=1.12,
+                repeat_penalty=1.12,  # llama-cpp-python parameter
                 stop=["<|im_end|>", "<|im_start|>"]
             )
 
