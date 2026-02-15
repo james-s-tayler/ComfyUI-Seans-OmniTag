@@ -27,21 +27,21 @@ def install_dependencies():
         return False
 
 try:
-    from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+    from transformers import AutoProcessor
     from qwen_vl_utils import process_vision_info
     import whisper
 except ImportError:
     install_dependencies()
-    from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+    from transformers import AutoProcessor
     from qwen_vl_utils import process_vision_info
     import whisper
+
 
 class SeansOmniTagProcessor:
     DEFAULT_WIDTH = 550
     DEFAULT_HEIGHT = 700
 
     def __init__(self):
-        self.model, self.processor = None, None
         self.audio_model = None
 
     @classmethod
@@ -61,7 +61,8 @@ class SeansOmniTagProcessor:
                     "tooltip": "For Single Video File mode: Right-click your video in File Explorer → Copy as path → paste here (Ctrl+V).\nExample: \"C:\\Example\\Example.mp4\"\nThis mode segments and captions one video."
                 }),
                 "output_path": ("STRING", {"default": "output/lora_dataset"}),
-                "model_id": ("STRING", {"default": "prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it"}),
+                "model": ("*", {"tooltip": "Connect your loaded GGUF/LLM model node output here."}),
+                "processor_id": ("STRING", {"default": "Qwen/Qwen2.5-VL-7B-Instruct"}),
                 "trigger_word": ("STRING", {"default": "ohwx"}),
                 "llm_instruction": ("STRING", {
                     "multiline": True,
@@ -135,13 +136,30 @@ class SeansOmniTagProcessor:
         new_w, new_h = int(w * scale), int(h * scale)
         return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
-    def generate_caption(self, device, pil_img, instruction, trigger, token_limit):
+    def resolve_model(self, model_input):
+        if hasattr(model_input, "generate"):
+            return model_input
+
+        if isinstance(model_input, (tuple, list)):
+            for item in model_input:
+                if hasattr(item, "generate"):
+                    return item
+
+        if isinstance(model_input, dict):
+            for key in ("model", "llm", "language_model"):
+                candidate = model_input.get(key)
+                if hasattr(candidate, "generate"):
+                    return candidate
+
+        return None
+
+    def generate_caption(self, model, processor, device, pil_img, instruction, trigger, token_limit):
         messages = [{"role": "user", "content": [{"type": "image", "image": pil_img}, {"type": "text", "text": instruction}]}]
-        text_in = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        text_in = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         img_in, _ = process_vision_info(messages)
-        inputs = self.processor(text=[text_in], images=img_in, padding=True, return_tensors="pt").to(device)
+        inputs = processor(text=[text_in], images=img_in, padding=True, return_tensors="pt").to(device)
         with torch.no_grad():
-            gen_ids = self.model.generate(
+            gen_ids = model.generate(
                 **inputs,
                 max_new_tokens=token_limit,
                 do_sample=True,
@@ -150,17 +168,17 @@ class SeansOmniTagProcessor:
                 repetition_penalty=1.12
             )
     
-        caption = self.processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
+        caption = processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
         if not caption or caption.lower() == trigger.lower() or len(caption) < 20:
             print(f"⚠️ Lazy caption detected. Retrying for {trigger}...")
             with torch.no_grad():
-                gen_ids = self.model.generate(
+                gen_ids = model.generate(
                     **inputs,
                     max_new_tokens=max(512, token_limit // 2),
                     do_sample=False,
                     repetition_penalty=1.25
                 )
-            caption = self.processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
+            caption = processor.batch_decode([g[len(i):] for i, g in zip(inputs.input_ids, gen_ids)], skip_special_tokens=True)[0].strip()
     
         if not caption or caption.lower() == trigger.lower():
             caption = f"{trigger}, a cinematic scene featuring a young woman in her mid-20s with long dark wavy hair, fair smooth skin, striking dark eyes, and a playful smile."
@@ -187,32 +205,19 @@ class SeansOmniTagProcessor:
             return (f"❌ ERROR: Path not found: {input_path}",)
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
-        # Clear VRAM before loading model (helps prevent OOM on low VRAM cards)
-        torch.cuda.empty_cache()
-        gc.collect()
-    
-        if self.model is None:
-            q_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,  # Safer for load peak
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_quant_storage=torch.uint8      # Reduces temp spikes
-            )
-            self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-                kwargs.get("model_id"),
-                quantization_config=q_config,
-                device_map="auto",
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,                 # Streams weights more carefully
-                offload_buffers=True,                   # Offloads buffers to CPU during load
-                torch_dtype=torch.bfloat16
-            )
-            self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
-    
-            # Clear again after loading
+        model_input = kwargs.get("model")
+        if model_input is None:
+            return ("❌ ERROR: Connect a model from ComfyUI-GGUF (or another model loader node).",)
+
+        model = self.resolve_model(model_input)
+        if model is None:
+            return ("❌ ERROR: Connected model input does not expose `.generate(...)`. Use a text/VLM model output.",)
+
+        processor = AutoProcessor.from_pretrained(kwargs.get("processor_id"), trust_remote_code=True)
+
+        if device == "cuda":
             torch.cuda.empty_cache()
-            gc.collect()
+        gc.collect()
     
         if kwargs.get("append_speech_to_end") and self.audio_model is None:
             self.audio_model = whisper.load_model("base")
@@ -241,7 +246,7 @@ class SeansOmniTagProcessor:
                     if img is None: continue
                     proc_img = self.smart_resize(img, int(kwargs.get("target_resolution")))
                     pil_img = Image.fromarray(cv2.cvtColor(proc_img, cv2.COLOR_BGR2RGB))
-                    caption = self.generate_caption(device, pil_img, final_instruction, kwargs.get("trigger_word"), token_limit)
+                    caption = self.generate_caption(model, processor, device, pil_img, final_instruction, kwargs.get("trigger_word"), token_limit)
                     name = os.path.splitext(os.path.basename(file_path))[0]
                     cv2.imwrite(os.path.join(output_path, f"{name}.png"), proc_img)
                     with open(os.path.join(output_path, f"{name}.txt"), "w", encoding="utf-8") as f:
@@ -268,7 +273,7 @@ class SeansOmniTagProcessor:
                         st = (s * frames_per_seg * kwargs.get("segment_skip")) / fps
                         subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', file_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
                         mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
-                        desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
+                        desc = self.generate_caption(model, processor, device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                         if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
                             speech = self.audio_model.transcribe(temp_wav)['text'].strip()
                             if speech: desc += f". Audio: \"{speech}\""
@@ -286,12 +291,15 @@ class SeansOmniTagProcessor:
                         with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                         if os.path.exists(sv): os.remove(sv)
                         if os.path.exists(temp_wav): os.remove(temp_wav)
-                        torch.cuda.empty_cache()   # Clear after each segment
+                        if device == "cuda":
+                            torch.cuda.empty_cache()   # Clear after each segment
                         gc.collect()
                     cap.release()
-                torch.cuda.empty_cache()       # Clear after each file
+                if device == "cuda":
+                    torch.cuda.empty_cache()       # Clear after each file
                 gc.collect()
-            torch.cuda.empty_cache()
+            if device == "cuda":
+                torch.cuda.empty_cache()
             return ("✅ Batch Folder Done – images & videos processed!",)
     
         # Single Video File Mode
@@ -320,7 +328,7 @@ class SeansOmniTagProcessor:
            
                 subprocess.run(['ffmpeg', '-y', '-ss', str(st), '-t', str(kwargs.get("video_segment_seconds")), '-i', input_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_wav], capture_output=True)
                 mid_pil = Image.fromarray(cv2.cvtColor(seg_frames[len(seg_frames)//2], cv2.COLOR_BGR2RGB))
-                desc = self.generate_caption(device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
+                desc = self.generate_caption(model, processor, device, mid_pil, final_instruction, kwargs.get("trigger_word"), token_limit)
                 if kwargs.get("append_speech_to_end") and os.path.exists(temp_wav):
                     speech = self.audio_model.transcribe(temp_wav)['text'].strip()
                     if speech: desc += f". Audio: \"{speech}\""
@@ -339,10 +347,12 @@ class SeansOmniTagProcessor:
                 with open(os.path.join(output_path, f"{file_base}.txt"), "w", encoding="utf-8") as f: f.write(desc)
                 if os.path.exists(sv): os.remove(sv)
                 if os.path.exists(temp_wav): os.remove(temp_wav)
-                torch.cuda.empty_cache()   # Clear after each segment
+                if device == "cuda":
+                    torch.cuda.empty_cache()   # Clear after each segment
                 gc.collect()
             cap.release()
-            torch.cuda.empty_cache()
+            if device == "cuda":
+                torch.cuda.empty_cache()
             gc.collect()
             return ("✅ Video Processing Done",)
 

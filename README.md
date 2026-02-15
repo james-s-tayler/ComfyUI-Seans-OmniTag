@@ -16,7 +16,10 @@ Say hello to **uncensored clinical detail** powered by **Qwen3-VL-8B-Abliterated
 1. Right-click your folder/video in File Explorer  
 2. Choose **Copy as path**  
 3. Click the text field in OmniTag → Ctrl+V to paste  
-4. Press Queue Prompt → get PNGs/MP4s + perfect .txt captions ready for training!
+4. Load your model with your preferred loader (for GGUF, use the existing **ComfyUI-GGUF** model loader node)
+5. Connect that model output into **SeansOmniTagProcessor**
+6. Set `processor_id` to the matching Hugging Face processor (default: `Qwen/Qwen2.5-VL-7B-Instruct`)
+7. Press Queue Prompt → get PNGs/MP4s + perfect .txt captions ready for training!
 
 🖼️📁 **Batch Folder Mode**  
 → Throw any folder at it (images + videos mixed)  
@@ -54,5 +57,5 @@ Perfect for building high-quality LoRA datasets, especially when you want **raw,
 
 
 Works with 4-bit quantized Qwen3-VL-8B (≈10–14 GB VRAM)  
-First run downloads model automatically (~16 GB)
+Model is now provided as an input, so you can reuse models loaded by other nodes (including GGUF workflows).
 
