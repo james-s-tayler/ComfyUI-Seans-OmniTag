@@ -210,7 +210,7 @@ class SeansOmniTagProcessor:
                     model_kwargs.update({
                         "device_map": "auto",
                         "max_memory": {
-                            "cuda:0": f"{safe_gpu_limit}GiB",
+                            0: f"{safe_gpu_limit}GiB",
                             "cpu": "48GiB"
                         },
                     })
