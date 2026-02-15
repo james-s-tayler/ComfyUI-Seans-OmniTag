@@ -9,6 +9,7 @@ from PIL import Image
 # --- COMFYUI CORE INTERRUPTS ---
 import nodes
 import comfy.model_management
+mm = comfy.model_management
 # --- AUTO-INSTALLER & FFmpeg VALIDATION ---
 def check_ffmpeg():
     """Verify if FFmpeg is installed and accessible in the system PATH."""
@@ -195,12 +196,13 @@ class SeansOmniTagProcessor:
         device = "cuda" if selected_device == "auto" and torch.cuda.is_available() else ("cpu" if selected_device == "auto" else selected_device)
 
         if self.model is None:
-            if device == "cuda":
-                if hasattr(comfy.model_management, "unload_all_models"):
-                    comfy.model_management.unload_all_models()
-                if hasattr(comfy.model_management, "soft_empty_cache"):
-                    comfy.model_management.soft_empty_cache()
+            if hasattr(mm, "unload_all_models"):
+                mm.unload_all_models()
+            if hasattr(mm, "soft_empty_cache"):
+                mm.soft_empty_cache()
+            if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            gc.collect()
             q_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
             model_kwargs = {
                 "quantization_config": q_config,
@@ -214,14 +216,17 @@ class SeansOmniTagProcessor:
                     total_gpu_gb = int(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3))
                     free_gpu_gb = int(torch.cuda.mem_get_info(0)[0] / (1024 ** 3))
                     safe_gpu_limit = max(2, min(total_gpu_gb - 2, free_gpu_gb - 2))
+                    offload_folder = os.path.join(output_path, "omnitag_offload")
+                    os.makedirs(offload_folder, exist_ok=True)
                     model_kwargs.update({
-                        "device_map": "auto",
+                        "device_map": "sequential",
                         "max_memory": {
                             0: f"{safe_gpu_limit}GiB",
-                            "cpu": "48GiB"
+                            "cpu": "64GiB"
                         },
+                        "offload_folder": offload_folder,
                     })
-                    print(f"ℹ️ Auto device mode: using GPU+CPU offload with {safe_gpu_limit}GiB GPU budget (free={free_gpu_gb}GiB, total={total_gpu_gb}GiB).")
+                    print(f"ℹ️ Auto device mode: using sequential GPU+CPU offload with {safe_gpu_limit}GiB GPU budget (free={free_gpu_gb}GiB, total={total_gpu_gb}GiB).")
             else:
                 model_kwargs.update({"device_map": "cpu"})
 
