@@ -112,6 +112,28 @@ class SeansOmniTagProcessor:
                 }),
                 "include_audio_in_video": ("BOOLEAN", {"default": True}),
                 "append_speech_to_end": ("BOOLEAN", {"default": True}),
+                "device_selection": (["auto", "cuda", "cpu"], {
+                    "default": "auto",
+                    "tooltip": "Model placement preference. auto=best available, cuda=GPU only, cpu=CPU only."
+                }),
+                "enable_cpu_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable Accelerate layer offloading (GPU + CPU). Helps prevent OOM on lower VRAM cards."
+                }),
+                "gpu_memory_limit_gb": ("INT", {
+                    "default": 10,
+                    "min": 4,
+                    "max": 80,
+                    "step": 1,
+                    "display": "slider"
+                }),
+                "cpu_memory_limit_gb": ("INT", {
+                    "default": 48,
+                    "min": 8,
+                    "max": 512,
+                    "step": 8,
+                    "display": "slider"
+                }),
             }
         }
 
@@ -185,15 +207,39 @@ class SeansOmniTagProcessor:
         token_limit = int(kwargs.get("max_tokens"))
         if not os.path.exists(input_path):
             return (f"❌ ERROR: Path not found: {input_path}",)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        selected_device = kwargs.get("device_selection", "auto")
+        if selected_device == "cuda" and not torch.cuda.is_available():
+            return ("❌ ERROR: CUDA selected but no NVIDIA GPU is available.",)
+        if selected_device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            device = selected_device
     
         if self.model is None:
             q_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
+            model_kwargs = {
+                "quantization_config": q_config,
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+            }
+            if device == "cpu":
+                model_kwargs.update({"device_map": "cpu"})
+            elif device == "cuda":
+                model_kwargs.update({"device_map": {"": 0}})
+            elif kwargs.get("enable_cpu_offload"):
+                model_kwargs.update({
+                    "device_map": "auto",
+                    "max_memory": {
+                        "cuda:0": f"{int(kwargs.get('gpu_memory_limit_gb'))}GiB",
+                        "cpu": f"{int(kwargs.get('cpu_memory_limit_gb'))}GiB"
+                    },
+                })
+            else:
+                model_kwargs.update({"device_map": {"": 0}})
+
             self.model = Qwen3VLForConditionalGeneration.from_pretrained(
                 kwargs.get("model_id"),
-                quantization_config=q_config,
-                device_map="auto",
-                trust_remote_code=True
+                **model_kwargs,
             )
             self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
     
