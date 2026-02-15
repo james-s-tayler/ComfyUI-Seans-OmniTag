@@ -1,5 +1,19 @@
 🚨 BIG UPGRADE ALERT – Sean's OmniTag Processor just leveled up from Qwen 2.5 to **Qwen 3**! 🔥 
 The old Qwen 2.5 was already savage.  
+
+Update Summary – Sean's OmniTag Processor (Feb 2025)
+Main changes in this version:
+
+Model selector added (clean dropdown, only 2 options now)
+→ prithivMLmods/Qwen3-VL-4B-Instruct-abliterated-v1 (default – lite, ~5–8 GB VRAM, fast & low-memory)
+→ prithivMLmods/Qwen3-VL-8B-Abliterated-Caption-it (full power, ~14–18 GB VRAM, max detail)
+All public repos — auto-downloads whichever you pick on first use. No gated models anymore.
+Trigger word is now forced
+Every caption always starts with your trigger word (default: ohwx), even if the user removes {trigger} from the LLM instruction box.
+→ Built-in safety net — no more forgetting the trigger during LoRA training.
+
+
+
 Now running **Qwen3-VL-8B-Abliterated-Caption-it** → captions are noticeably sharper, more exhaustive, better object counting, spatial reasoning, fewer hallucinations, and even less censored.  
 Same VRAM footprint, way better "clinical / unfiltered / zero-BS" detail.
 
