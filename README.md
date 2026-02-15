@@ -3,6 +3,12 @@ The old Qwen 2.5 was already savage.
 Now running **Qwen3-VL-8B-Abliterated-Caption-it** → captions are noticeably sharper, more exhaustive, better object counting, spatial reasoning, fewer hallucinations, and even less censored.  
 Same VRAM footprint, way better "clinical / unfiltered / zero-BS" detail.
 
+🆕 **GGUF Support Added!** 🎉  
+Now includes **SeansOmniTagProcessorGGUF** node that uses llama-cpp-python for even **lower VRAM usage** with GGUF format models!  
+Perfect for resource-constrained systems. Choose between:
+- **SeansOmniTagProcessor** → Original node using transformers + 4-bit quantization (≈10-14 GB VRAM)
+- **SeansOmniTagProcessorGGUF** → New GGUF-powered node with llama-cpp-python (≈4-8 GB VRAM)
+
 Tired of weak, lazy, censored captions for your LoRAs / datasets?  
 Say hello to **uncensored clinical detail** powered by **Qwen3-VL-8B-Abliterated-Caption-it** in ComfyUI.
 
@@ -51,8 +57,35 @@ Example: a 2000×1000 photo → resized to 768 on the long edge → becomes 768�
 
 Perfect for building high-quality LoRA datasets, especially when you want **raw, detailed, uncensored descriptions** without fighting refusal.
 
+---
 
+## 🎯 Using GGUF Models (Lower VRAM)
+
+The **SeansOmniTagProcessorGGUF** node supports GGUF format models which require significantly less VRAM:
+
+**Option 1: Auto-download from HuggingFace (Recommended)**
+1. Use default settings - the node will automatically download GGUF models from HuggingFace
+2. Default repo: `Qwen/Qwen3-VL-8B-GGUF`
+3. Default files: `qwen3-vl-8b-q4_k_m.gguf` and `mmproj-qwen3-vl-8b-f16.gguf`
+4. Models are cached locally after first download
+
+**Option 2: Use local GGUF files**
+1. Download GGUF model files manually from HuggingFace
+2. Set `model_path` to your `.gguf` model file path
+3. Set `mmproj_path` to your mmproj file path (required for image processing)
+
+**GGUF Parameters:**
+- `n_ctx`: Context window size (default: 8192)
+- `n_gpu_layers`: Number of layers to offload to GPU (-1 = all layers)
+- All other parameters work the same as the original node
+
+**Recommended GGUF Models:**
+- Qwen3-VL models in Q4_K_M or Q5_K_M quantization for best quality/size balance
+- Available on HuggingFace: `Qwen/Qwen3-VL-8B-GGUF`, `Qwen/Qwen3-VL-2B-GGUF`
+
+---
 
 Works with 4-bit quantized Qwen3-VL-8B (≈10–14 GB VRAM)  
-First run downloads model automatically (~16 GB)
+**NEW: GGUF version available with even lower VRAM usage (≈4-8 GB VRAM)!**  
+First run downloads model automatically (~16 GB for safetensors, ~5-8 GB for GGUF)
 
