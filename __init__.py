@@ -112,6 +112,10 @@ class SeansOmniTagProcessor:
                 }),
                 "include_audio_in_video": ("BOOLEAN", {"default": True}),
                 "append_speech_to_end": ("BOOLEAN", {"default": True}),
+                "device_selection": (["auto", "cuda", "cpu"], {
+                    "default": "auto",
+                    "tooltip": "Select model device: auto picks CUDA if available, otherwise CPU."
+                }),
             }
         }
 
@@ -185,7 +189,10 @@ class SeansOmniTagProcessor:
         token_limit = int(kwargs.get("max_tokens"))
         if not os.path.exists(input_path):
             return (f"❌ ERROR: Path not found: {input_path}",)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        selected_device = kwargs.get("device_selection", "auto")
+        if selected_device == "cuda" and not torch.cuda.is_available():
+            return ("❌ ERROR: CUDA selected but no NVIDIA GPU is available.",)
+        device = "cuda" if selected_device == "auto" and torch.cuda.is_available() else ("cpu" if selected_device == "auto" else selected_device)
 
         if self.model is None:
             q_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4")
@@ -195,38 +202,26 @@ class SeansOmniTagProcessor:
                 "low_cpu_mem_usage": True,
             }
             if device == "cuda":
-                total_gpu_gb = int(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3))
-                safe_gpu_limit = max(2, total_gpu_gb - 1)
-                model_kwargs.update({
-                    "device_map": "auto",
-                    "max_memory": {
-                        "cuda:0": f"{safe_gpu_limit}GiB",
-                        "cpu": "48GiB"
-                    },
-                })
-                print(f"ℹ️ Auto device mode: using GPU+CPU offload with {safe_gpu_limit}GiB GPU budget.")
+                if selected_device == "cuda":
+                    model_kwargs.update({"device_map": {"": 0}})
+                else:
+                    total_gpu_gb = int(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3))
+                    safe_gpu_limit = max(2, total_gpu_gb - 1)
+                    model_kwargs.update({
+                        "device_map": "auto",
+                        "max_memory": {
+                            "cuda:0": f"{safe_gpu_limit}GiB",
+                            "cpu": "48GiB"
+                        },
+                    })
+                    print(f"ℹ️ Auto device mode: using GPU+CPU offload with {safe_gpu_limit}GiB GPU budget.")
             else:
                 model_kwargs.update({"device_map": "cpu"})
 
-            try:
-                self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-                    kwargs.get("model_id"),
-                    **model_kwargs,
-                )
-            except RuntimeError as e:
-                if device == "cuda" and "out of memory" in str(e).lower():
-                    print("⚠️ OOM while loading on GPU. Falling back to CPU automatically.")
-                    torch.cuda.empty_cache()
-                    model_kwargs.pop("max_memory", None)
-                    model_kwargs["device_map"] = "cpu"
-                    self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-                        kwargs.get("model_id"),
-                        **model_kwargs,
-                    )
-                    device = "cpu"
-                else:
-                    raise
-
+            self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+                kwargs.get("model_id"),
+                **model_kwargs,
+            )
             self.processor = AutoProcessor.from_pretrained(kwargs.get("model_id"), trust_remote_code=True)
     
         if kwargs.get("append_speech_to_end") and self.audio_model is None:
