@@ -44,6 +44,11 @@ Say hello to **uncensored clinical detail** powered by **Qwen3-VL-8B-Abliterated
 Starts every caption with your trigger word (default: ohwx)  
 Anti-lazy retry + fallback if model tries to be boring
 
+🖼️ How the smart resize works
+The image is resized so the longest side (width or height) exactly matches your chosen target resolution (e.g. 768 px), while keeping the original aspect ratio perfectly intact — no stretching or squishing! 😎
+The shorter side scales down proportionally, so a tall portrait stays tall, a wide landscape stays wide. Uses high-quality Lanczos interpolation for sharp, clean results.
+Example: a 2000×1000 photo → resized to 768 on the long edge → becomes 768×384 (or 384×768 for portrait). Perfect for consistent LoRA training without weird distortions! 📏✨
+
 Perfect for building high-quality LoRA datasets, especially when you want **raw, detailed, uncensored descriptions** without fighting refusal.
 
 
